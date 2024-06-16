@@ -24,11 +24,6 @@ import { CardAnimationContext } from '../../utils/CardAnimationContext';
 import { getDistanceForDirection } from '../../utils/getDistanceForDirection';
 import { getInvertedMultiplier } from '../../utils/getInvertedMultiplier';
 import { memoize } from '../../utils/memoize';
-import {
-  GestureState,
-  PanGestureHandler,
-  type PanGestureHandlerGestureEvent,
-} from '../GestureHandler';
 import { CardSheet, type CardSheetRef } from './CardSheet';
 
 type Props = ViewProps & {
@@ -71,12 +66,6 @@ const GESTURE_VELOCITY_IMPACT = 0.3;
 
 const TRUE = 1;
 const FALSE = 0;
-
-/**
- * The distance of touch start from the edge of the screen where the gesture will be recognized
- */
-const GESTURE_RESPONSE_DISTANCE_HORIZONTAL = 50;
-const GESTURE_RESPONSE_DISTANCE_VERTICAL = 135;
 
 const useNativeDriver = Platform.OS !== 'web';
 
@@ -275,92 +264,6 @@ export class Card extends React.Component<Props> {
     }
   };
 
-  private handleGestureStateChange = ({
-    nativeEvent,
-  }: PanGestureHandlerGestureEvent) => {
-    const {
-      direction,
-      layout,
-      onClose,
-      onGestureBegin,
-      onGestureCanceled,
-      onGestureEnd,
-      gestureDirection,
-      gestureVelocityImpact,
-    } = this.props;
-
-    switch (nativeEvent.state) {
-      case GestureState.ACTIVE:
-        this.isSwiping.setValue(TRUE);
-        this.handleStartInteraction();
-        onGestureBegin?.();
-        break;
-      case GestureState.CANCELLED:
-      case GestureState.FAILED: {
-        this.isSwiping.setValue(FALSE);
-        this.handleEndInteraction();
-
-        const velocity =
-          gestureDirection === 'vertical' ||
-          gestureDirection === 'vertical-inverted'
-            ? nativeEvent.velocityY
-            : nativeEvent.velocityX;
-
-        this.animate({
-          closing: this.props.closing,
-          velocity,
-        });
-
-        onGestureCanceled?.();
-        break;
-      }
-      case GestureState.END: {
-        this.isSwiping.setValue(FALSE);
-
-        let distance;
-        let translation;
-        let velocity;
-
-        if (
-          gestureDirection === 'vertical' ||
-          gestureDirection === 'vertical-inverted'
-        ) {
-          distance = layout.height;
-          translation = nativeEvent.translationY;
-          velocity = nativeEvent.velocityY;
-        } else {
-          distance = layout.width;
-          translation = nativeEvent.translationX;
-          velocity = nativeEvent.velocityX;
-        }
-
-        const closing =
-          (translation + velocity * gestureVelocityImpact) *
-            getInvertedMultiplier(gestureDirection, direction === 'rtl') >
-          distance / 2
-            ? velocity !== 0 || translation !== 0
-            : this.props.closing;
-
-        this.animate({ closing, velocity });
-
-        if (closing) {
-          // We call onClose with a delay to make sure that the animation has already started
-          // This will make sure that the state update caused by this doesn't affect start of animation
-          this.pendingGestureCallback = setTimeout(() => {
-            onClose();
-
-            // Trigger an update after we dispatch the action to remove the screen
-            // This will make sure that we check if the screen didn't get removed so we can cancel the animation
-            this.forceUpdate();
-          }, 32) as any as number;
-        }
-
-        onGestureEnd?.();
-        break;
-      }
-    }
-  };
-
   // Memoize this to avoid extra work on re-render
   private getInterpolatedStyle = memoize(
     (
@@ -399,58 +302,6 @@ export class Card extends React.Component<Props> {
     })
   );
 
-  private gestureActivationCriteria() {
-    const { direction, layout, gestureDirection, gestureResponseDistance } =
-      this.props;
-    const enableTrackpadTwoFingerGesture = true;
-
-    const distance =
-      gestureResponseDistance !== undefined
-        ? gestureResponseDistance
-        : gestureDirection === 'vertical' ||
-            gestureDirection === 'vertical-inverted'
-          ? GESTURE_RESPONSE_DISTANCE_VERTICAL
-          : GESTURE_RESPONSE_DISTANCE_HORIZONTAL;
-
-    if (gestureDirection === 'vertical') {
-      return {
-        maxDeltaX: 15,
-        minOffsetY: 5,
-        hitSlop: { bottom: -layout.height + distance },
-        enableTrackpadTwoFingerGesture,
-      };
-    } else if (gestureDirection === 'vertical-inverted') {
-      return {
-        maxDeltaX: 15,
-        minOffsetY: -5,
-        hitSlop: { top: -layout.height + distance },
-        enableTrackpadTwoFingerGesture,
-      };
-    } else {
-      const hitSlop = -layout.width + distance;
-      const invertedMultiplier = getInvertedMultiplier(
-        gestureDirection,
-        direction === 'rtl'
-      );
-
-      if (invertedMultiplier === 1) {
-        return {
-          minOffsetX: 5,
-          maxDeltaY: 20,
-          hitSlop: { right: hitSlop },
-          enableTrackpadTwoFingerGesture,
-        };
-      } else {
-        return {
-          minOffsetX: -5,
-          maxDeltaY: 20,
-          hitSlop: { left: hitSlop },
-          enableTrackpadTwoFingerGesture,
-        };
-      }
-    }
-  }
-
   private ref = React.createRef<CardSheetRef>();
 
   render() {
@@ -458,14 +309,12 @@ export class Card extends React.Component<Props> {
       styleInterpolator,
       interpolationIndex,
       current,
-      gesture,
       next,
       layout,
       insets,
       overlay,
       overlayEnabled,
       shadowEnabled,
-      gestureEnabled,
       gestureDirection,
       pageOverflowEnabled,
       children,
@@ -506,21 +355,6 @@ export class Card extends React.Component<Props> {
     const { containerStyle, cardStyle, overlayStyle, shadowStyle } =
       interpolatedStyle;
 
-    const handleGestureEvent = gestureEnabled
-      ? Animated.event(
-          [
-            {
-              nativeEvent:
-                gestureDirection === 'vertical' ||
-                gestureDirection === 'vertical-inverted'
-                  ? { translationY: gesture }
-                  : { translationX: gesture },
-            },
-          ],
-          { useNativeDriver }
-        )
-      : undefined;
-
     const { backgroundColor } = StyleSheet.flatten(contentStyle || {});
     const isTransparent =
       typeof backgroundColor === 'string'
@@ -556,43 +390,36 @@ export class Card extends React.Component<Props> {
             style={[styles.container, containerStyle, customContainerStyle]}
             pointerEvents="box-none"
           >
-            <PanGestureHandler
-              enabled={layout.width !== 0 && gestureEnabled}
-              onGestureEvent={handleGestureEvent}
-              onHandlerStateChange={this.handleGestureStateChange}
-              {...this.gestureActivationCriteria()}
+            <Animated.View
+              needsOffscreenAlphaCompositing={hasOpacityStyle(cardStyle)}
+              style={[styles.container, cardStyle]}
             >
-              <Animated.View
-                needsOffscreenAlphaCompositing={hasOpacityStyle(cardStyle)}
-                style={[styles.container, cardStyle]}
+              {shadowEnabled && shadowStyle && !isTransparent ? (
+                <Animated.View
+                  style={[
+                    styles.shadow,
+                    gestureDirection === 'horizontal'
+                      ? [styles.shadowHorizontal, styles.shadowStart]
+                      : gestureDirection === 'horizontal-inverted'
+                        ? [styles.shadowHorizontal, styles.shadowEnd]
+                        : gestureDirection === 'vertical'
+                          ? [styles.shadowVertical, styles.shadowTop]
+                          : [styles.shadowVertical, styles.shadowBottom],
+                    { backgroundColor },
+                    shadowStyle,
+                  ]}
+                  pointerEvents="none"
+                />
+              ) : null}
+              <CardSheet
+                ref={this.ref}
+                enabled={pageOverflowEnabled}
+                layout={layout}
+                style={contentStyle}
               >
-                {shadowEnabled && shadowStyle && !isTransparent ? (
-                  <Animated.View
-                    style={[
-                      styles.shadow,
-                      gestureDirection === 'horizontal'
-                        ? [styles.shadowHorizontal, styles.shadowStart]
-                        : gestureDirection === 'horizontal-inverted'
-                          ? [styles.shadowHorizontal, styles.shadowEnd]
-                          : gestureDirection === 'vertical'
-                            ? [styles.shadowVertical, styles.shadowTop]
-                            : [styles.shadowVertical, styles.shadowBottom],
-                      { backgroundColor },
-                      shadowStyle,
-                    ]}
-                    pointerEvents="none"
-                  />
-                ) : null}
-                <CardSheet
-                  ref={this.ref}
-                  enabled={pageOverflowEnabled}
-                  layout={layout}
-                  style={contentStyle}
-                >
-                  {children}
-                </CardSheet>
-              </Animated.View>
-            </PanGestureHandler>
+                {children}
+              </CardSheet>
+            </Animated.View>
           </Animated.View>
         </View>
       </CardAnimationContext.Provider>
