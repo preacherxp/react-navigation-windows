@@ -11,7 +11,6 @@ import type {
   Theme,
 } from '@react-navigation/native';
 import type { StyleProp, TextStyle, ViewStyle } from 'react-native';
-import type { PanGesture } from 'react-native-gesture-handler';
 
 export type Scene = {
   route: Route<string>;

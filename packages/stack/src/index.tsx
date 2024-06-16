@@ -28,9 +28,7 @@ export {
  * Utilities
  */
 export { CardAnimationContext } from './utils/CardAnimationContext';
-export { GestureHandlerRefContext } from './utils/GestureHandlerRefContext';
 export { useCardAnimation } from './utils/useCardAnimation';
-export { useGestureHandlerRef } from './utils/useGestureHandlerRef';
 
 /**
  * Types
